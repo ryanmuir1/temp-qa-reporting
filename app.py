@@ -22,15 +22,22 @@ from engine import (
     evaluate_lot,
 )
 from engine.config import ProcessConfig
-from engine.evaluate import FAILED, INCOMPLETE, MARGINAL, PASSED
+from engine.evaluate import (
+    FLAGGED,
+    INCOMPLETE,
+    MARGINAL,
+    PASSED,
+    REJECTED,
+)
 from engine.plotting import boxplot_for_ctq
 
 CONFIGS_DIR = Path(__file__).parent / "configs"
 
 _BUCKET_LABEL = {
     PASSED: "✅ Passed",
-    MARGINAL: "🟡 Marginal",
-    FAILED: "❌ Failed",
+    MARGINAL: "🟡 Marginal (borderline CtP)",
+    FLAGGED: "🔵 Flag to PD",
+    REJECTED: "❌ Rejected",
     INCOMPLETE: "⚪ Incomplete",
 }
 
@@ -49,6 +56,8 @@ def render_process_page(cfg: ProcessConfig):
         spec_rows = [{
             "CTQ": c.name, "source": c.source, "unit": c.unit,
             "lower": c.lower, "upper": c.upper, "nominal": c.nominal,
+            "out-of-range": {"reject": "Reject (CtP)", "flag": "Flag to PD",
+                             "monitor": "Monitor only"}[c.disposition],
         } for c in cfg.ctqs]
         st.dataframe(pd.DataFrame(spec_rows), use_container_width=True)
 
@@ -62,8 +71,9 @@ def render_process_page(cfg: ProcessConfig):
         tol = st.slider(
             "Marginal tolerance (%)", min_value=0.0, max_value=25.0,
             value=float(cfg.default_tolerance_pct), step=0.5, key=f"tol_{cfg.id}",
-            help="A unit that fails a CTQ by no more than this is 'marginal' "
-                 "rather than 'failed'.",
+            help="A unit that misses a Critical-to-Performance (reject) CTQ by "
+                 "no more than this is 'marginal' rather than 'rejected'. "
+                 "Diagnostic (flag-to-PD) CTQs flag on any miss.",
         )
 
     if uploaded is None:
@@ -89,31 +99,32 @@ def render_process_page(cfg: ProcessConfig):
 
     # ---- Summary cards -----------------------------------------------------
     st.subheader("Lot summary")
-    m1, m2, m3, m4, m5 = st.columns(5)
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("Total units", total)
     m2.metric("Passed", counts[PASSED],
               f"{100*counts[PASSED]/total:.1f}%" if total else "")
     m3.metric("Marginal", counts[MARGINAL])
-    m4.metric("Failed", counts[FAILED])
-    m5.metric("Incomplete", counts[INCOMPLETE])
+    m4.metric("Flag to PD", counts[FLAGGED])
+    m5.metric("Rejected", counts[REJECTED])
+    m6.metric("Incomplete", counts[INCOMPLETE])
 
     # ---- Buckets -----------------------------------------------------------
     st.subheader("Report")
+    order = [PASSED, MARGINAL, FLAGGED, REJECTED, INCOMPLETE]
     tabs = st.tabs([
-        f"{_BUCKET_LABEL[PASSED]} ({counts[PASSED]})",
-        f"{_BUCKET_LABEL[MARGINAL]} ({counts[MARGINAL]})",
-        f"{_BUCKET_LABEL[FAILED]} ({counts[FAILED]})",
-        f"{_BUCKET_LABEL[INCOMPLETE]} ({counts[INCOMPLETE]})",
+        f"{_BUCKET_LABEL[b]} ({counts[b]})" for b in order
     ])
-    for tab, bucket in zip(
-        tabs, [PASSED, MARGINAL, FAILED, INCOMPLETE]
-    ):
+    for tab, bucket in zip(tabs, order):
         with tab:
             b = summary[summary["bucket"] == bucket]
             cols = ["serial", "sheet", "position"]
-            if bucket in (MARGINAL, FAILED):
-                cols += ["worst_ctq", "worst_margin_pct", "failed_ctqs"]
-            if bucket == INCOMPLETE:
+            if bucket == REJECTED:
+                cols += ["worst_ctq", "worst_margin_pct", "reject_ctqs"]
+            elif bucket == MARGINAL:
+                cols += ["worst_ctq", "worst_margin_pct", "marginal_ctqs"]
+            elif bucket == FLAGGED:
+                cols += ["flag_ctqs"]
+            elif bucket == INCOMPLETE:
                 cols += ["incomplete_ctqs"]
             st.dataframe(b[cols], use_container_width=True, hide_index=True)
             if len(b):

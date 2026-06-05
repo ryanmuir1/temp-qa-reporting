@@ -26,9 +26,11 @@ from .transforms import FormulaError, evaluate_condition, evaluate_formula
 
 PASSED = "passed"
 MARGINAL = "marginal"
-FAILED = "failed"
+FLAGGED = "flagged"      # diagnostic out of range -> flag to Process Dev
+REJECTED = "rejected"    # CtP out of range beyond tolerance -> reject product
 INCOMPLETE = "incomplete"
-NA = "n/a"
+NA = "n/a"               # CTQ not applicable to this row (wrong side, etc.)
+MONITOR = "monitor"      # tracked-only metric, no disposition
 
 
 class EvaluationError(Exception):
@@ -177,16 +179,20 @@ def evaluate_lot(
             if not bool(applicable.loc[idx]):
                 status = NA
                 margin = np.nan
+            elif ctq.disposition == "monitor":
+                status = MONITOR
+                margin = np.nan
+            elif np.isnan(v):
+                status = INCOMPLETE
+                margin = np.nan
             else:
                 margin = _margin_pct(v, ctq, cfg.margin_basis)
-                if np.isnan(v):
-                    status = INCOMPLETE
-                elif margin == 0.0:
+                if margin == 0.0:
                     status = PASSED
-                elif margin <= tolerance_pct:
-                    status = MARGINAL
-                else:
-                    status = FAILED
+                elif ctq.disposition == "flag":
+                    status = FLAGGED
+                else:  # 'reject' (CtP)
+                    status = MARGINAL if margin <= tolerance_pct else REJECTED
             records.append({
                 "serial": df.at[idx, "serial"],
                 "sheet": df.at[idx, "sheet"],
@@ -198,42 +204,46 @@ def evaluate_lot(
                 "lower": ctq.lower,
                 "upper": ctq.upper,
                 "nominal": ctq.nominal,
+                "disposition": ctq.disposition,
                 "margin_pct": margin,
                 "status": status,
             })
 
     long = pd.DataFrame.from_records(records)
 
-    # Roll up to one bucket per serial: worst CTQ outcome wins.
+    # Roll up to one bucket per serial. Priority: a CtP rejection outranks an
+    # unmeasured CtP (incomplete), which outranks a borderline CtP (marginal),
+    # which outranks a diagnostic flag, which outranks a clean pass.
     summary_rows = []
     for serial, grp_all in long.groupby("serial", sort=False):
-        grp = grp_all[grp_all["status"] != NA]
+        # Ignore not-applicable and monitor-only cells when disposing.
+        grp = grp_all[~grp_all["status"].isin([NA, MONITOR])]
         if grp.empty:
             bucket = INCOMPLETE
+        elif (grp["status"] == REJECTED).any():
+            bucket = REJECTED
         elif (grp["status"] == INCOMPLETE).any():
             bucket = INCOMPLETE
-        elif (grp["status"] == FAILED).any():
-            bucket = FAILED
         elif (grp["status"] == MARGINAL).any():
             bucket = MARGINAL
+        elif (grp["status"] == FLAGGED).any():
+            bucket = FLAGGED
         else:
             bucket = PASSED
 
-        failing = grp[grp["margin_pct"] > 0]
-        if len(failing):
-            worst = failing.loc[failing["margin_pct"].idxmax()]
+        out = grp[grp["margin_pct"] > 0]
+        if len(out):
+            worst = out.loc[out["margin_pct"].idxmax()]
             worst_ctq = worst["ctq"]
             worst_margin = float(worst["margin_pct"])
         else:
             worst_ctq = ""
             worst_margin = 0.0
 
-        failed_ctqs = sorted(
-            set(grp.loc[grp["status"].isin([FAILED, MARGINAL]), "ctq"])
-        )
-        incomplete_ctqs = sorted(
-            set(grp.loc[grp["status"] == INCOMPLETE, "ctq"])
-        )
+        reject_ctqs = sorted(set(grp.loc[grp["status"] == REJECTED, "ctq"]))
+        marginal_ctqs = sorted(set(grp.loc[grp["status"] == MARGINAL, "ctq"]))
+        flag_ctqs = sorted(set(grp.loc[grp["status"] == FLAGGED, "ctq"]))
+        incomplete_ctqs = sorted(set(grp.loc[grp["status"] == INCOMPLETE, "ctq"]))
         summary_rows.append({
             "serial": serial,
             "sheet": grp_all["sheet"].iloc[0],
@@ -241,7 +251,9 @@ def evaluate_lot(
             "bucket": bucket,
             "worst_ctq": worst_ctq,
             "worst_margin_pct": worst_margin,
-            "failed_ctqs": ", ".join(failed_ctqs),
+            "reject_ctqs": ", ".join(reject_ctqs),
+            "marginal_ctqs": ", ".join(marginal_ctqs),
+            "flag_ctqs": ", ".join(flag_ctqs),
             "incomplete_ctqs": ", ".join(incomplete_ctqs),
         })
 
@@ -250,7 +262,7 @@ def evaluate_lot(
 
 
 def bucket_counts(summary: pd.DataFrame) -> dict[str, int]:
-    counts = {PASSED: 0, MARGINAL: 0, FAILED: 0, INCOMPLETE: 0}
+    counts = {PASSED: 0, MARGINAL: 0, FLAGGED: 0, REJECTED: 0, INCOMPLETE: 0}
     if len(summary):
         vc = summary["bucket"].value_counts().to_dict()
         counts.update({k: int(v) for k, v in vc.items()})

@@ -49,8 +49,23 @@ class CTQ:
     # true (e.g. "c['Front/Back'] == 'Front'"). Rows where it is false are
     # 'n/a' and excluded from pass/fail, rather than counted as missing data.
     applies_when: str | None = None
+    # What to do when out of range:
+    #   'reject'  -> Critical-to-Performance. Out beyond tolerance rejects the
+    #                product; out within tolerance is 'marginal'.
+    #   'flag'    -> diagnostic. Out of range flags to Process Dev, never
+    #                rejects the product.
+    #   'monitor' -> no spec; value is tracked/plotted only, never disposed.
+    disposition: str = "reject"
 
     def __post_init__(self):
+        allowed = {"reject", "flag", "monitor"}
+        if self.disposition not in allowed:
+            raise ConfigError(
+                f"CTQ {self.id!r}: disposition must be one of {sorted(allowed)}, "
+                f"got {self.disposition!r}."
+            )
+        if self.disposition == "monitor":
+            return  # monitor metrics need no limits
         if self.lower is None and self.upper is None:
             raise ConfigError(
                 f"CTQ {self.id!r} must define at least one of 'lower' / 'upper'."
@@ -140,6 +155,7 @@ def load_process_config(path: str | Path) -> ProcessConfig:
             nominal=c.get("nominal"),
             margin_basis=c.get("margin_basis"),
             applies_when=c.get("applies_when"),
+            disposition=c.get("disposition", "reject"),
         ))
     if not ctqs:
         raise ConfigError(f"{path}: at least one CTQ is required.")

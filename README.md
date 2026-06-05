@@ -22,13 +22,16 @@ the report renders.
 CSV  ─►  resolve serial (sheet + position)
      ─►  compute transforms (in order)
      ─►  check each CTQ against its limits, measure % out of spec
-     ─►  bucket each unit:
+     ─►  bucket each unit (worst CTQ wins, by disposition):
             passed      every CTQ in spec
-            marginal    fails a CTQ, but worst miss ≤ tolerance %
-            failed      worst miss  > tolerance %
-            incomplete  a CTQ value was missing / unevaluable
+            marginal    a CtP metric out, but within tolerance %
+            flagged     only diagnostic (flag-to-PD) metrics out
+            rejected    a CtP metric out beyond tolerance %
+            incomplete  an applicable CTQ value was missing
      ─►  report lists (downloadable) + boxplots per CTQ
 ```
+
+Priority when a unit trips several: rejected › incomplete › marginal › flagged › passed.
 
 The marginal tolerance is a live slider in the UI (defaults from the YAML), so
 QA can loosen it during development without touching config.
@@ -69,6 +72,21 @@ ctqs:                           # at least one required
     # margin_basis: range       # optional per-CTQ override
     # applies_when: 'c["Front/Back"] == "Front"'   # only judge on matching rows
 ```
+
+### Dispositions (what happens when a value is out of range)
+
+Each CTQ declares a `disposition`:
+
+| disposition | meaning | out-of-range result |
+|-------------|---------|---------------------|
+| `reject`    | Critical-to-Performance | beyond tolerance → **Rejected**; within tolerance → **Marginal** |
+| `flag`      | diagnostic indicator    | **Flag to Process Dev** (any amount; never rejects product) |
+| `monitor`   | tracked only, no limits | never disposed — just recorded and plotted |
+
+So a sensor that only misses diagnostic CTQs is *flagged for PD review*, not
+scrapped; only a Critical-to-Performance miss rejects product. `reject` is the
+default if you omit `disposition` (fail-safe). The marginal tolerance slider
+governs the reject-vs-marginal line on CtP metrics.
 
 ### applies_when (conditional CTQs)
 

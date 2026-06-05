@@ -13,13 +13,15 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from .config import CTQ
-from .evaluate import FAILED, INCOMPLETE, MARGINAL, PASSED
+from .evaluate import FLAGGED, INCOMPLETE, MARGINAL, MONITOR, PASSED, REJECTED
 
 _STATUS_COLOR = {
     PASSED: "#2e9e5b",
     MARGINAL: "#e6a700",
-    FAILED: "#d6453d",
+    FLAGGED: "#3b7dd8",
+    REJECTED: "#d6453d",
     INCOMPLETE: "#8a8a8a",
+    MONITOR: "#7a5cc4",
 }
 
 

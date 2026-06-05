@@ -1,7 +1,13 @@
 # =============================================================================
-# Screen Printing (SP) — built for LN-P00227.csv, with real QC specs.
-# Front side = electrodes 1/3/5, Back side = electrodes 2/4/6 (the counter
-# electrodes). Each CTQ is gated to the side that carries its electrode.
+# Screen Printing (SP) — LN-P00227.csv, with QC specs + out-of-range dispositions.
+#
+# disposition tells the app what to do when a value is out of spec:
+#   reject   = Critical-to-Performance. Beyond tolerance -> Rejected;
+#              within tolerance -> Marginal.
+#   flag     = diagnostic. Out of range -> Flag to Process Dev (never rejects).
+#   monitor  = tracked/plotted only, no limits, no disposition.
+#
+# Front side = electrodes 1/3/5, Back (counter) side = electrodes 2/4/6.
 # =============================================================================
 
 process:
@@ -20,43 +26,45 @@ default_tolerance_pct: 5.0
 margin_basis: limit
 
 transforms:
-  # E3 has no Surface Area column; total area = exposed + covered.
   - name: E3 Surface Area
     formula: 'c["Electrode 3 Exposed Area"] + c["Electrode 3 Covered Area"]'
-  # Total counter surface area = SA of the back electrodes 2 + 4 + 6.
   - name: Total Counter SA
     formula: 'c["Electrode 2 Surface Area"] + c["Electrode 4 Surface Area"] + c["Electrode 6 Surface Area"]'
-  # E3 exposed ratio as a percentage of total E3 area.
   - name: E3 Exposed Ratio
     formula: '100 * c["Electrode 3 Exposed Area"] / (c["Electrode 3 Exposed Area"] + c["Electrode 3 Covered Area"])'
 
 ctqs:
-  # ---- Widths -------------------------------------------------------------
-  - {name: E1 Width, id: e1_w, source: "Electrode 1 Width", unit: mm, nominal: 0.15,  lower: 0.12, upper: 0.18, applies_when: 'c["Front/Back"] == "Front"'}
-  - {name: E3 Width, id: e3_w, source: "Electrode 3 Width", unit: mm, nominal: 0.175, lower: 0.14, upper: 0.21, applies_when: 'c["Front/Back"] == "Front"'}
-  - {name: E5 Width, id: e5_w, source: "Electrode 5 Width", unit: mm, nominal: 0.15,  lower: 0.12, upper: 0.18, applies_when: 'c["Front/Back"] == "Front"'}
-  - {name: E2 Width, id: e2_w, source: "Electrode 2 Width", unit: mm, nominal: 0.15,  lower: 0.12, upper: 0.18, applies_when: 'c["Front/Back"] == "Back"'}
-  - {name: E4 Width, id: e4_w, source: "Electrode 4 Width", unit: mm, nominal: 0.10,  lower: 0.06, upper: 0.14, applies_when: 'c["Front/Back"] == "Back"'}
-  - {name: E6 Width, id: e6_w, source: "Electrode 6 Width", unit: mm, nominal: 0.15,  lower: 0.12, upper: 0.18, applies_when: 'c["Front/Back"] == "Back"'}
+  # ---- Widths (diagnostic -> flag to PD) ----------------------------------
+  - {name: E1 Width, id: e1_w, source: "Electrode 1 Width", unit: mm, nominal: 0.15,  lower: 0.12, upper: 0.18, disposition: flag, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E3 Width, id: e3_w, source: "Electrode 3 Width", unit: mm, nominal: 0.175, lower: 0.14, upper: 0.21, disposition: flag, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E5 Width, id: e5_w, source: "Electrode 5 Width", unit: mm, nominal: 0.15,  lower: 0.12, upper: 0.18, disposition: flag, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E2 Width, id: e2_w, source: "Electrode 2 Width", unit: mm, nominal: 0.15,  lower: 0.12, upper: 0.18, disposition: flag, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E4 Width, id: e4_w, source: "Electrode 4 Width", unit: mm, nominal: 0.10,  lower: 0.06, upper: 0.14, disposition: flag, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E6 Width, id: e6_w, source: "Electrode 6 Width", unit: mm, nominal: 0.15,  lower: 0.12, upper: 0.18, disposition: flag, applies_when: 'c["Front/Back"] == "Back"'}
 
-  # ---- Heights ------------------------------------------------------------
-  - {name: E1 Height, id: e1_h, source: "Electrode 1 Height", unit: mm, nominal: 0.75,  lower: 0.5, upper: 1.0, applies_when: 'c["Front/Back"] == "Front"'}
-  - {name: E3 Height, id: e3_h, source: "Electrode 3 Height", unit: mm, nominal: 0.842, lower: 0.6, upper: 1.0, applies_when: 'c["Front/Back"] == "Front"'}
-  - {name: E5 Height, id: e5_h, source: "Electrode 5 Height", unit: mm, nominal: 0.75,  lower: 0.5, upper: 1.0, applies_when: 'c["Front/Back"] == "Front"'}
-  - {name: E2 Height, id: e2_h, source: "Electrode 2 Height", unit: mm, nominal: 0.75,  lower: 0.5, upper: 1.0, applies_when: 'c["Front/Back"] == "Back"'}
-  - {name: E4 Height, id: e4_h, source: "Electrode 4 Height", unit: mm, nominal: 1.0,   lower: 0.5, upper: 1.2, applies_when: 'c["Front/Back"] == "Back"'}
-  - {name: E6 Height, id: e6_h, source: "Electrode 6 Height", unit: mm, nominal: 0.75,  lower: 0.5, upper: 1.0, applies_when: 'c["Front/Back"] == "Back"'}
+  # ---- Heights (diagnostic -> flag to PD) ---------------------------------
+  - {name: E1 Height, id: e1_h, source: "Electrode 1 Height", unit: mm, nominal: 0.75,  lower: 0.5, upper: 1.0, disposition: flag, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E3 Height, id: e3_h, source: "Electrode 3 Height", unit: mm, nominal: 0.842, lower: 0.6, upper: 1.0, disposition: flag, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E5 Height, id: e5_h, source: "Electrode 5 Height", unit: mm, nominal: 0.75,  lower: 0.5, upper: 1.0, disposition: flag, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E2 Height, id: e2_h, source: "Electrode 2 Height", unit: mm, nominal: 0.75,  lower: 0.5, upper: 1.0, disposition: flag, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E4 Height, id: e4_h, source: "Electrode 4 Height", unit: mm, nominal: 1.0,   lower: 0.5, upper: 1.2, disposition: flag, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E6 Height, id: e6_h, source: "Electrode 6 Height", unit: mm, nominal: 0.75,  lower: 0.5, upper: 1.0, disposition: flag, applies_when: 'c["Front/Back"] == "Back"'}
 
   # ---- Surface areas ------------------------------------------------------
-  - {name: E1 SA, id: e1_sa, source: "Electrode 1 Surface Area", unit: mm2, nominal: 0.10,  lower: 0.06, upper: 0.12, applies_when: 'c["Front/Back"] == "Front"'}
-  - {name: E3 SA, id: e3_sa, source: "E3 Surface Area",          unit: mm2, nominal: 0.141, lower: 0.11, upper: 0.18, applies_when: 'c["Front/Back"] == "Front"'}
-  - {name: E5 SA, id: e5_sa, source: "Electrode 5 Surface Area", unit: mm2, nominal: 0.10,  lower: 0.06, upper: 0.12, applies_when: 'c["Front/Back"] == "Front"'}
-  - {name: E2 SA, id: e2_sa, source: "Electrode 2 Surface Area", unit: mm2, nominal: 0.10,  lower: 0.06, upper: 0.12, applies_when: 'c["Front/Back"] == "Back"'}
-  - {name: E4 SA, id: e4_sa, source: "Electrode 4 Surface Area", unit: mm2, nominal: 0.09,  lower: 0.06, upper: 0.12, applies_when: 'c["Front/Back"] == "Back"'}
-  - {name: E6 SA, id: e6_sa, source: "Electrode 6 Surface Area", unit: mm2, nominal: 0.10,  lower: 0.06, upper: 0.12, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E1 SA, id: e1_sa, source: "Electrode 1 Surface Area", unit: mm2, nominal: 0.10,  lower: 0.06, upper: 0.12, disposition: flag, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E5 SA, id: e5_sa, source: "Electrode 5 Surface Area", unit: mm2, nominal: 0.10,  lower: 0.06, upper: 0.12, disposition: flag, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E2 SA, id: e2_sa, source: "Electrode 2 Surface Area", unit: mm2, nominal: 0.10,  lower: 0.06, upper: 0.12, disposition: flag, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E4 SA, id: e4_sa, source: "Electrode 4 Surface Area", unit: mm2, nominal: 0.09,  lower: 0.06, upper: 0.12, disposition: flag, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E6 SA, id: e6_sa, source: "Electrode 6 Surface Area", unit: mm2, nominal: 0.10,  lower: 0.06, upper: 0.12, disposition: flag, applies_when: 'c["Front/Back"] == "Back"'}
+  # E3 SA: Critical-to-Performance, lower bound only -> Reject if below 0.11.
+  - {name: E3 SA, id: e3_sa, source: "E3 Surface Area", unit: mm2, nominal: 0.141, lower: 0.11, disposition: reject, applies_when: 'c["Front/Back"] == "Front"'}
 
-  # ---- Derived / combined CTQs -------------------------------------------
-  # Total counter surface area: lower bound only (no upper specified).
-  - {name: Total Counter SA (E2+E4+E6), id: total_counter_sa, source: "Total Counter SA", unit: mm2, nominal: 0.35, lower: 0.29, applies_when: 'c["Front/Back"] == "Back"'}
-  # E3 exposed ratio: upper bound only (max 40%).
-  - {name: E3 Exposed Ratio, id: e3_exposed_ratio, source: "E3 Exposed Ratio", unit: "%", upper: 40.0, applies_when: 'c["Front/Back"] == "Front"'}
+  # ---- Critical-to-Performance combined metrics ---------------------------
+  # Total counter surface area: Reject if below 0.35 (lower bound only).
+  - {name: Total Counter SA (E2+E4+E6), id: total_counter_sa, source: "Total Counter SA", unit: mm2, nominal: 0.35, lower: 0.35, disposition: reject, applies_when: 'c["Front/Back"] == "Back"'}
+  # E3 exposed ratio: Reject if outside 10–40%.
+  - {name: E3 Exposed Ratio, id: e3_exposed_ratio, source: "E3 Exposed Ratio", unit: "%", nominal: 25.0, lower: 10.0, upper: 40.0, disposition: reject, applies_when: 'c["Front/Back"] == "Front"'}
+
+  # ---- Monitor-only (no spec, tracked & plotted) --------------------------
+  - {name: E3 Covered SA, id: e3_covered_sa, source: "Electrode 3 Covered Area", unit: mm2, disposition: monitor, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E3 Exposed SA, id: e3_exposed_sa, source: "Electrode 3 Exposed Area", unit: mm2, disposition: monitor, applies_when: 'c["Front/Back"] == "Front"'}
