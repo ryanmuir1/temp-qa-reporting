@@ -22,12 +22,13 @@ import numpy as np
 import pandas as pd
 
 from .config import CTQ, ProcessConfig
-from .transforms import FormulaError, evaluate_formula
+from .transforms import FormulaError, evaluate_condition, evaluate_formula
 
 PASSED = "passed"
 MARGINAL = "marginal"
 FAILED = "failed"
 INCOMPLETE = "incomplete"
+NA = "n/a"
 
 
 class EvaluationError(Exception):
@@ -162,17 +163,30 @@ def evaluate_lot(
     records = []
     for ctq in cfg.ctqs:
         series = _resolve_source(df, ctq)
+        if ctq.applies_when:
+            try:
+                applicable = evaluate_condition(ctq.applies_when, df)
+            except FormulaError as e:
+                raise EvaluationError(
+                    f"CTQ {ctq.id!r} applies_when: {e}"
+                ) from e
+        else:
+            applicable = pd.Series(True, index=df.index)
         for idx in df.index:
             v = series.loc[idx]
-            margin = _margin_pct(v, ctq, cfg.margin_basis)
-            if np.isnan(v):
-                status = INCOMPLETE
-            elif margin == 0.0:
-                status = PASSED
-            elif margin <= tolerance_pct:
-                status = MARGINAL
+            if not bool(applicable.loc[idx]):
+                status = NA
+                margin = np.nan
             else:
-                status = FAILED
+                margin = _margin_pct(v, ctq, cfg.margin_basis)
+                if np.isnan(v):
+                    status = INCOMPLETE
+                elif margin == 0.0:
+                    status = PASSED
+                elif margin <= tolerance_pct:
+                    status = MARGINAL
+                else:
+                    status = FAILED
             records.append({
                 "serial": df.at[idx, "serial"],
                 "sheet": df.at[idx, "sheet"],
@@ -192,8 +206,11 @@ def evaluate_lot(
 
     # Roll up to one bucket per serial: worst CTQ outcome wins.
     summary_rows = []
-    for serial, grp in long.groupby("serial", sort=False):
-        if (grp["status"] == INCOMPLETE).any():
+    for serial, grp_all in long.groupby("serial", sort=False):
+        grp = grp_all[grp_all["status"] != NA]
+        if grp.empty:
+            bucket = INCOMPLETE
+        elif (grp["status"] == INCOMPLETE).any():
             bucket = INCOMPLETE
         elif (grp["status"] == FAILED).any():
             bucket = FAILED
@@ -219,8 +236,8 @@ def evaluate_lot(
         )
         summary_rows.append({
             "serial": serial,
-            "sheet": grp["sheet"].iloc[0],
-            "position": grp["position"].iloc[0],
+            "sheet": grp_all["sheet"].iloc[0],
+            "position": grp_all["position"].iloc[0],
             "bucket": bucket,
             "worst_ctq": worst_ctq,
             "worst_margin_pct": worst_margin,

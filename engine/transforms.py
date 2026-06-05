@@ -72,3 +72,31 @@ def evaluate_formula(formula: str, df: pd.DataFrame) -> pd.Series:
         result = pd.Series(result, index=df.index)
 
     return pd.to_numeric(result, errors="coerce")
+
+
+def evaluate_condition(formula: str, df: pd.DataFrame) -> pd.Series:
+    """Evaluate a boolean condition (e.g. "c['Front/Back'] == 'Front'").
+
+    Unlike evaluate_formula this does NOT coerce to numeric, so string
+    comparisons work. Returns a boolean Series aligned with df.
+    """
+    column_accessor = {col: df[col] for col in df.columns}
+    namespace: dict = {}
+    namespace.update(_ALLOWED_CONSTS)
+    namespace.update(_ALLOWED_FUNCS)
+    namespace["c"] = column_accessor
+    namespace["np"] = np
+    for col in df.columns:
+        if col.isidentifier():
+            namespace[col] = df[col]
+    try:
+        result = eval(formula, {"__builtins__": {}}, namespace)  # noqa: S307
+    except Exception as exc:  # noqa: BLE001
+        raise FormulaError(
+            f"Failed to evaluate condition {formula!r}: {exc}"
+        ) from exc
+    if np.isscalar(result):
+        result = pd.Series(bool(result), index=df.index)
+    elif not isinstance(result, pd.Series):
+        result = pd.Series(result, index=df.index)
+    return result.astype(bool)

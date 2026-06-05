@@ -1,79 +1,78 @@
 # =============================================================================
-# Screen Printing process configuration  (EXAMPLE / PLACEHOLDER)
+# Screen Printing process configuration  — built for LN-P00227.csv
 # -----------------------------------------------------------------------------
-# Every *.yaml file in this configs/ folder becomes one page in the app.
-# To add a new process, copy this file, rename it, and edit the fields.
+# Front side carries electrodes 1/3/5, Back side carries 2/4/6, so each
+# electrode CTQ is gated with applies_when so it is only judged on the relevant
+# side (rows where it doesn't apply are 'n/a', not counted as missing data).
 #
-# >>> The column names below (raw_thickness_v, offset_v, ... ) are PLACEHOLDERS.
-# >>> Replace them with the real columns from LN-P00227.csv once you share it.
+# >>> LIMITS BELOW ARE PLACEHOLDERS: seeded from this lot's mean ±3σ so the
+# >>> report runs and splits sensibly. REPLACE lower/upper with real spec.
 # =============================================================================
 
 process:
   name: Screen Printing
   id: screen_printing
   description: >
-    Squeegee deposition QA. Thickness derived from a measured voltage,
-    gain from a raw reading times its calibration factor.
+    Electrode geometry QA. Serial = Sheet Number + Sensor Position.
+    Front electrodes 1/3/5, back electrodes 2/4/6, gated per side.
 
-# How to get the serial number. The serial is sheet + position e.g. Z32R-968-A1.
 serial_number:
-  # Option A: it already exists as one column ->
-  column: SerialNumber
-  # Option B (instead of `column`): build it from parts ->
-  # construct_from: [Sheet, Position]
-  # separator: "-"
-  #
-  # How to split the serial into components for grouping/plots.
-  # Default below: everything before the last '-' is the sheet ("Z32R-968"),
-  # the trailing chunk is the position ("A1"). Override if your scheme differs.
+  construct_from: ["Sheet Number", "Sensor Position"]
+  separator: "-"
+  # "Z32R-968" + "A1" -> "Z32R-968-A1"; split back into sheet / position.
   parse_regex: "^(?P<sheet>.+)-(?P<position>[^-]+)$"
 
-# Default % a unit may exceed any single CTQ limit and still land in the
-# "marginal" bucket instead of "failed". The QA user can change this live.
 default_tolerance_pct: 5.0
-
-# How "% out of spec" is measured when a CTQ fails. Options:
-#   limit   -> exceedance / violated limit value      (default, most intuitive)
-#   range   -> exceedance / spec width (upper - lower)
-#   nominal -> exceedance / nominal value
-# Can be overridden per-CTQ with `margin_basis:`.
 margin_basis: limit
 
-# Derived values. Computed in order; a later transform may use an earlier one.
-# Reference a column by bare name if it's a valid identifier, otherwise use
-# c["Exact Column Name"]. Numpy funcs available: sqrt, log, exp, clip, where...
+# Derived CTQs that combine columns.
 transforms:
-  - name: thickness_um
-    formula: "(raw_thickness_v - offset_v) / slope_um_per_v"
+  - name: E1 Aspect Ratio
+    formula: 'c["Electrode 1 Height"] / c["Electrode 1 Width"]'
+  - name: E3 Aspect Ratio
+    formula: 'c["Electrode 3 Height"] / c["Electrode 3 Width"]'
+  - name: E5 Aspect Ratio
+    formula: 'c["Electrode 5 Height"] / c["Electrode 5 Width"]'
+  - name: E2 Aspect Ratio
+    formula: 'c["Electrode 2 Height"] / c["Electrode 2 Width"]'
+  - name: E4 Aspect Ratio
+    formula: 'c["Electrode 4 Height"] / c["Electrode 4 Width"]'
+  - name: E6 Aspect Ratio
+    formula: 'c["Electrode 6 Height"] / c["Electrode 6 Width"]'
+  - name: E3 Coverage Fraction
+    formula: 'c["Electrode 3 Covered Area"] / (c["Electrode 3 Exposed Area"] + c["Electrode 3 Covered Area"])'
 
-  - name: gain
-    formula: "raw_gain * gain_cal_factor"
-
-  - name: gain_db
-    formula: "20 * log10(gain)"      # uses the transform above
-
-# The CTQs. `source` is either a raw column or a transform name.
-# Provide at least one of lower / upper. nominal is optional (drawn on plots).
 ctqs:
-  - name: Print Thickness
-    id: print_thickness
-    source: thickness_um
-    unit: "um"
-    lower: 12.0
-    upper: 18.0
-    nominal: 15.0
+  # ----- FRONT: electrodes 1, 3, 5 -----------------------------------------
+  - {name: E1 Height,  id: e1_h, source: "Electrode 1 Height",       unit: mm, lower: 0.62, upper: 0.92, nominal: 0.771, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E1 Width,   id: e1_w, source: "Electrode 1 Width",        unit: mm, lower: 0.135, upper: 0.207, nominal: 0.171, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E1 Surface Area, id: e1_sa, source: "Electrode 1 Surface Area", unit: mm2, lower: 0.083, upper: 0.137, nominal: 0.110, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E1 Aspect Ratio, id: e1_ar, source: "E1 Aspect Ratio",    unit: "", lower: 3.5, upper: 6.0, nominal: 4.52, applies_when: 'c["Front/Back"] == "Front"'}
 
-  - name: Sensor Gain
-    id: sensor_gain
-    source: gain
-    unit: "x"
-    lower: 0.90
-    upper: 1.10
-    nominal: 1.00
+  - {name: E3 Height,  id: e3_h, source: "Electrode 3 Height",       unit: mm, lower: 1.05, upper: 1.32, nominal: 1.189, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E3 Width,   id: e3_w, source: "Electrode 3 Width",        unit: mm, lower: 0.07, upper: 0.28, nominal: 0.174, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E3 Exposed Area, id: e3_ea, source: "Electrode 3 Exposed Area", unit: mm2, lower: 0.005, upper: 0.052, nominal: 0.022, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E3 Covered Area, id: e3_ca, source: "Electrode 3 Covered Area", unit: mm2, lower: 0.05, upper: 0.15, nominal: 0.0995, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E3 Coverage Fraction, id: e3_cf, source: "E3 Coverage Fraction", unit: "", lower: 0.70, upper: 0.95, nominal: 0.82, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E3 Aspect Ratio, id: e3_ar, source: "E3 Aspect Ratio",    unit: "", lower: 4.5, upper: 12.0, nominal: 7.27, applies_when: 'c["Front/Back"] == "Front"'}
 
-  - name: Gain (dB)
-    id: gain_db
-    source: gain_db
-    unit: "dB"
-    upper: 0.83            # one-sided spec is fine
-    margin_basis: range    # this CTQ measured against its own basis
+  - {name: E5 Height,  id: e5_h, source: "Electrode 5 Height",       unit: mm, lower: 0.63, upper: 0.91, nominal: 0.771, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E5 Width,   id: e5_w, source: "Electrode 5 Width",        unit: mm, lower: 0.127, upper: 0.199, nominal: 0.163, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E5 Surface Area, id: e5_sa, source: "Electrode 5 Surface Area", unit: mm2, lower: 0.077, upper: 0.131, nominal: 0.104, applies_when: 'c["Front/Back"] == "Front"'}
+  - {name: E5 Aspect Ratio, id: e5_ar, source: "E5 Aspect Ratio",    unit: "", lower: 3.5, upper: 6.3, nominal: 4.76, applies_when: 'c["Front/Back"] == "Front"'}
+
+  # ----- BACK: electrodes 2, 4, 6 ------------------------------------------
+  - {name: E2 Height,  id: e2_h, source: "Electrode 2 Height",       unit: mm, lower: 0.52, upper: 0.90, nominal: 0.707, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E2 Width,   id: e2_w, source: "Electrode 2 Width",        unit: mm, lower: 0.107, upper: 0.187, nominal: 0.147, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E2 Surface Area, id: e2_sa, source: "Electrode 2 Surface Area", unit: mm2, lower: 0.045, upper: 0.117, nominal: 0.081, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E2 Aspect Ratio, id: e2_ar, source: "E2 Aspect Ratio",    unit: "", lower: 3.5, upper: 6.5, nominal: 4.8, applies_when: 'c["Front/Back"] == "Back"'}
+
+  - {name: E4 Height,  id: e4_h, source: "Electrode 4 Height",       unit: mm, lower: 0.35, upper: 0.85, nominal: 0.597, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E4 Width,   id: e4_w, source: "Electrode 4 Width",        unit: mm, lower: 0.078, upper: 0.156, nominal: 0.117, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E4 Surface Area, id: e4_sa, source: "Electrode 4 Surface Area", unit: mm2, lower: 0.022, upper: 0.088, nominal: 0.055, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E4 Aspect Ratio, id: e4_ar, source: "E4 Aspect Ratio",    unit: "", lower: 3.5, upper: 7.0, nominal: 5.1, applies_when: 'c["Front/Back"] == "Back"'}
+
+  - {name: E6 Height,  id: e6_h, source: "Electrode 6 Height",       unit: mm, lower: 0.51, upper: 0.92, nominal: 0.711, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E6 Width,   id: e6_w, source: "Electrode 6 Width",        unit: mm, lower: 0.121, upper: 0.205, nominal: 0.163, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E6 Surface Area, id: e6_sa, source: "Electrode 6 Surface Area", unit: mm2, lower: 0.052, upper: 0.137, nominal: 0.094, applies_when: 'c["Front/Back"] == "Back"'}
+  - {name: E6 Aspect Ratio, id: e6_ar, source: "E6 Aspect Ratio",    unit: "", lower: 3.5, upper: 6.5, nominal: 4.4, applies_when: 'c["Front/Back"] == "Back"'}

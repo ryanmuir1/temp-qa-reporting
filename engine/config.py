@@ -45,6 +45,10 @@ class CTQ:
     # Per-CTQ override of how the margin-out-of-spec percentage is computed.
     # One of: 'limit' (default), 'range', 'nominal'. See evaluate.py.
     margin_basis: str | None = None
+    # Optional boolean expression; the CTQ is only evaluated on rows where it is
+    # true (e.g. "c['Front/Back'] == 'Front'"). Rows where it is false are
+    # 'n/a' and excluded from pass/fail, rather than counted as missing data.
+    applies_when: str | None = None
 
     def __post_init__(self):
         if self.lower is None and self.upper is None:
@@ -135,6 +139,7 @@ def load_process_config(path: str | Path) -> ProcessConfig:
             upper=c.get("upper"),
             nominal=c.get("nominal"),
             margin_basis=c.get("margin_basis"),
+            applies_when=c.get("applies_when"),
         ))
     if not ctqs:
         raise ConfigError(f"{path}: at least one CTQ is required.")

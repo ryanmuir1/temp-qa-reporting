@@ -67,7 +67,22 @@ ctqs:                           # at least one required
     upper: 18.0
     nominal: 15.0               # optional, drawn on plots
     # margin_basis: range       # optional per-CTQ override
+    # applies_when: 'c["Front/Back"] == "Front"'   # only judge on matching rows
 ```
+
+### applies_when (conditional CTQs)
+
+A CTQ with `applies_when` is only evaluated on rows where the condition is true.
+Rows where it's false are `n/a` and excluded from pass/fail — *not* counted as
+missing data. This is how the screen-printing config judges front electrodes
+(1/3/5) only on front rows and back electrodes (2/4/6) only on back rows, so a
+front sensor isn't flagged incomplete just because it has no back-electrode
+readings. The condition is a boolean expression over the columns, same syntax as
+formulas (use `c["..."]` for names with spaces/symbols).
+
+> Note: units are grouped by serial (sheet + position), so a sensor measured on
+> both faces is judged on all its applicable electrodes together. If you'd
+> rather treat each face as its own unit, add `Front/Back` into the serial.
 
 ### Formulas
 
