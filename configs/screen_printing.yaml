@@ -1,0 +1,79 @@
+# =============================================================================
+# Screen Printing process configuration  (EXAMPLE / PLACEHOLDER)
+# -----------------------------------------------------------------------------
+# Every *.yaml file in this configs/ folder becomes one page in the app.
+# To add a new process, copy this file, rename it, and edit the fields.
+#
+# >>> The column names below (raw_thickness_v, offset_v, ... ) are PLACEHOLDERS.
+# >>> Replace them with the real columns from LN-P00227.csv once you share it.
+# =============================================================================
+
+process:
+  name: Screen Printing
+  id: screen_printing
+  description: >
+    Squeegee deposition QA. Thickness derived from a measured voltage,
+    gain from a raw reading times its calibration factor.
+
+# How to get the serial number. The serial is sheet + position e.g. Z32R-968-A1.
+serial_number:
+  # Option A: it already exists as one column ->
+  column: SerialNumber
+  # Option B (instead of `column`): build it from parts ->
+  # construct_from: [Sheet, Position]
+  # separator: "-"
+  #
+  # How to split the serial into components for grouping/plots.
+  # Default below: everything before the last '-' is the sheet ("Z32R-968"),
+  # the trailing chunk is the position ("A1"). Override if your scheme differs.
+  parse_regex: "^(?P<sheet>.+)-(?P<position>[^-]+)$"
+
+# Default % a unit may exceed any single CTQ limit and still land in the
+# "marginal" bucket instead of "failed". The QA user can change this live.
+default_tolerance_pct: 5.0
+
+# How "% out of spec" is measured when a CTQ fails. Options:
+#   limit   -> exceedance / violated limit value      (default, most intuitive)
+#   range   -> exceedance / spec width (upper - lower)
+#   nominal -> exceedance / nominal value
+# Can be overridden per-CTQ with `margin_basis:`.
+margin_basis: limit
+
+# Derived values. Computed in order; a later transform may use an earlier one.
+# Reference a column by bare name if it's a valid identifier, otherwise use
+# c["Exact Column Name"]. Numpy funcs available: sqrt, log, exp, clip, where...
+transforms:
+  - name: thickness_um
+    formula: "(raw_thickness_v - offset_v) / slope_um_per_v"
+
+  - name: gain
+    formula: "raw_gain * gain_cal_factor"
+
+  - name: gain_db
+    formula: "20 * log10(gain)"      # uses the transform above
+
+# The CTQs. `source` is either a raw column or a transform name.
+# Provide at least one of lower / upper. nominal is optional (drawn on plots).
+ctqs:
+  - name: Print Thickness
+    id: print_thickness
+    source: thickness_um
+    unit: "um"
+    lower: 12.0
+    upper: 18.0
+    nominal: 15.0
+
+  - name: Sensor Gain
+    id: sensor_gain
+    source: gain
+    unit: "x"
+    lower: 0.90
+    upper: 1.10
+    nominal: 1.00
+
+  - name: Gain (dB)
+    id: gain_db
+    source: gain_db
+    unit: "dB"
+    upper: 0.83            # one-sided spec is fine
+    margin_basis: range    # this CTQ measured against its own basis
