@@ -156,11 +156,31 @@ def _margin_pct(value, ctq: CTQ, basis: str) -> float:
 def evaluate_lot(
     raw_df: pd.DataFrame,
     cfg: ProcessConfig,
-    tolerance_pct: float,
+    tolerances: dict[str, float] | float | None = None,
+    active: dict[str, bool] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Evaluate an uploaded lot. Returns (long_df, summary_df)."""
+    """Evaluate an uploaded lot. Returns (long_df, summary_df).
+
+    tolerances: per-CTQ-id marginal tolerance (%). May also be a single float
+        applied to every CtP, or None to use each CTQ's own default.
+    active: per-CTQ-id enforcement flag for 'reject' CTQs. When a CtP is
+        inactive, its out-of-range values are demoted to a flag ("proceed at
+        risk") instead of rejecting the unit.
+    """
     df = resolve_serials(raw_df, cfg)
     df = apply_transforms(df, cfg)
+
+    active = active or {}
+
+    def tol_for(ctq: CTQ) -> float:
+        if isinstance(tolerances, dict):
+            if ctq.id in tolerances:
+                return tolerances[ctq.id]
+        elif isinstance(tolerances, (int, float)):
+            return float(tolerances)
+        if ctq.tolerance_pct is not None:
+            return ctq.tolerance_pct
+        return cfg.default_tolerance_pct
 
     records = []
     for ctq in cfg.ctqs:
@@ -174,6 +194,8 @@ def evaluate_lot(
                 ) from e
         else:
             applicable = pd.Series(True, index=df.index)
+        tol = tol_for(ctq)
+        is_active = active.get(ctq.id, ctq.active)
         for idx in df.index:
             v = series.loc[idx]
             if not bool(applicable.loc[idx]):
@@ -191,8 +213,11 @@ def evaluate_lot(
                     status = PASSED
                 elif ctq.disposition == "flag":
                     status = FLAGGED
-                else:  # 'reject' (CtP)
-                    status = MARGINAL if margin <= tolerance_pct else REJECTED
+                elif not is_active:
+                    # CtP rejection waived -> proceed at risk, recorded as flag.
+                    status = FLAGGED
+                else:  # 'reject' (CtP), enforced
+                    status = MARGINAL if margin <= tol else REJECTED
             records.append({
                 "serial": df.at[idx, "serial"],
                 "sheet": df.at[idx, "sheet"],

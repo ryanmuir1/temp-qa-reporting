@@ -47,6 +47,49 @@ def _download_button(df: pd.DataFrame, label: str, filename: str):
     st.download_button(label, data=csv, file_name=filename, mime="text/csv")
 
 
+def _qa_ticket_table(summary: pd.DataFrame) -> pd.DataFrame:
+    """Compact 5-column table for a QA ticket: serial, result, marginal, issue."""
+    if summary.empty:
+        return pd.DataFrame(
+            columns=["Serial", "Result", "Marginal", "Key CTQ", "Sheet"]
+        )
+
+    def result(bucket: str) -> str:
+        if bucket == REJECTED:
+            return "REJECT"
+        if bucket == INCOMPLETE:
+            return "REVIEW"
+        return "PASS"
+
+    def key_ctq(row) -> str:
+        if row["bucket"] == REJECTED:
+            return row["reject_ctqs"]
+        if row["bucket"] == MARGINAL:
+            return row["marginal_ctqs"]
+        if row["bucket"] == FLAGGED:
+            return row["flag_ctqs"]
+        if row["bucket"] == INCOMPLETE:
+            return row["incomplete_ctqs"]
+        return ""
+
+    out = pd.DataFrame({
+        "Serial": summary["serial"],
+        "Result": summary["bucket"].map(result),
+        "Marginal": summary["bucket"].map(
+            lambda b: "yes" if b == MARGINAL else ""
+        ),
+        "Key CTQ": summary.apply(key_ctq, axis=1),
+        "Sheet": summary["sheet"],
+    })
+    # Rejects first, then reviews, then passes; serial order within.
+    rank = {"REJECT": 0, "REVIEW": 1, "PASS": 2}
+    out = out.sort_values(
+        by=["Result", "Serial"], key=lambda s: s.map(rank).fillna(s)
+        if s.name == "Result" else s
+    ).reset_index(drop=True)
+    return out
+
+
 def render_process_page(cfg: ProcessConfig):
     st.title(f"{cfg.name} — QA Report")
     if cfg.description:
@@ -62,19 +105,41 @@ def render_process_page(cfg: ProcessConfig):
         st.dataframe(pd.DataFrame(spec_rows), use_container_width=True)
 
     # ---- Controls ----------------------------------------------------------
-    c1, c2 = st.columns([3, 2])
-    with c1:
-        uploaded = st.file_uploader(
-            "Upload imaging CSV for this lot", type=["csv"], key=f"up_{cfg.id}"
+    uploaded = st.file_uploader(
+        "Upload imaging CSV for this lot", type=["csv"], key=f"up_{cfg.id}"
+    )
+
+    reject_ctqs = [c for c in cfg.ctqs if c.disposition == "reject"]
+    tolerances: dict[str, float] = {}
+    active: dict[str, bool] = {}
+    with st.expander(
+        "Critical-to-Performance controls (enforce / tolerance per CtP)",
+        expanded=False,
+    ):
+        st.caption(
+            "Turn a rejection gate off to proceed failing units at risk "
+            "(they move to Flag-to-PD), or widen one CtP's marginal band "
+            "without touching the others."
         )
-    with c2:
-        tol = st.slider(
-            "Marginal tolerance (%)", min_value=0.0, max_value=25.0,
-            value=float(cfg.default_tolerance_pct), step=0.5, key=f"tol_{cfg.id}",
-            help="A unit that misses a Critical-to-Performance (reject) CTQ by "
-                 "no more than this is 'marginal' rather than 'rejected'. "
-                 "Diagnostic (flag-to-PD) CTQs flag on any miss.",
-        )
+        for c in reject_ctqs:
+            cc1, cc2 = st.columns([1, 2])
+            with cc1:
+                active[c.id] = st.toggle(
+                    f"Enforce · {c.name}", value=c.active,
+                    key=f"act_{cfg.id}_{c.id}",
+                )
+            with cc2:
+                default_tol = (
+                    c.tolerance_pct if c.tolerance_pct is not None
+                    else cfg.default_tolerance_pct
+                )
+                tolerances[c.id] = st.slider(
+                    f"Marginal tolerance % · {c.name}",
+                    min_value=0.0, max_value=100.0, value=float(default_tol),
+                    step=0.5, key=f"tol_{cfg.id}_{c.id}",
+                    disabled=not active[c.id],
+                    help="Miss within this % is 'marginal'; beyond it 'rejected'.",
+                )
 
     if uploaded is None:
         st.info("Upload a CSV to generate the report.")
@@ -87,7 +152,9 @@ def render_process_page(cfg: ProcessConfig):
         return
 
     try:
-        long, summary = evaluate_lot(raw, cfg, tolerance_pct=tol)
+        long, summary = evaluate_lot(
+            raw, cfg, tolerances=tolerances, active=active
+        )
     except EvaluationError as e:
         st.error(str(e))
         with st.expander("Columns found in your file"):
@@ -132,6 +199,30 @@ def render_process_page(cfg: ProcessConfig):
                     b, f"Download {bucket} list",
                     f"{cfg.id}_{bucket}.csv",
                 )
+
+    # ---- QA ticket view ----------------------------------------------------
+    st.subheader("QA ticket view")
+    st.caption(
+        "Compact pass/reject table for pasting into a QA ticket. Marginal and "
+        "flagged units count as passes (they proceed)."
+    )
+    qa = _qa_ticket_table(summary)
+    qc1, qc2 = st.columns(2)
+    with qc1:
+        show = st.radio(
+            "Show", ["All", "Passes only", "Rejects only"],
+            horizontal=True, key=f"qa_show_{cfg.id}",
+        )
+    view = qa
+    if show == "Passes only":
+        view = qa[qa["Result"] == "PASS"]
+    elif show == "Rejects only":
+        view = qa[qa["Result"] == "REJECT"]
+
+    st.dataframe(view, use_container_width=True, hide_index=True)
+    _download_button(view, "Download QA table (CSV)", f"{cfg.id}_qa_ticket.csv")
+    with st.expander("Copy-paste version (TSV / tab-separated for tickets)"):
+        st.code(view.to_csv(sep="\t", index=False), language="text")
 
     # ---- Plots -------------------------------------------------------------
     st.subheader("Lot summary plots")

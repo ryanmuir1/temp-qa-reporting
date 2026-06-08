@@ -141,6 +141,18 @@ qa_app/
 └── README.md
 ```
 
+## Live controls (no config edits needed)
+
+- **Per-CtP enforce toggle** — switch any Critical-to-Performance gate off to
+  proceed failing units *at risk*; their misses are demoted to Flag-to-PD
+  instead of rejecting. Use for a known process problem (e.g. Total Counter SA).
+- **Per-CtP marginal slider** — each CtP has its own tolerance %, so you can
+  widen one gate without loosening the rest. A YAML CTQ may seed its own default
+  with `tolerance_pct:` and start inactive with `active: false`.
+- **QA ticket view** — a compact 5-column table (Serial, Result, Marginal, Key
+  CTQ, Sheet) with PASS/REJECT, downloadable as CSV or copy-pasteable as TSV for
+  a ticket. Marginal and flagged units read as PASS (they proceed).
+
 ## Notes / next steps
 
 - The example YAML uses **placeholder column names**. Swap them for the real

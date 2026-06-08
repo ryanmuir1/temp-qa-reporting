@@ -56,6 +56,14 @@ class CTQ:
     #                rejects the product.
     #   'monitor' -> no spec; value is tracked/plotted only, never disposed.
     disposition: str = "reject"
+    # For 'reject' CTQs: whether the rejection gate is enforced by default
+    # (the UI can toggle this live). When inactive, an out-of-range value is
+    # demoted to a flag ("proceed at risk") instead of rejecting the product.
+    active: bool = True
+    # For 'reject' CTQs: per-criterion marginal tolerance (%). Falls back to the
+    # process default_tolerance_pct when not set. Lets you loosen one CtP (e.g.
+    # a known problem) without touching the others.
+    tolerance_pct: float | None = None
 
     def __post_init__(self):
         allowed = {"reject", "flag", "monitor"}
@@ -156,6 +164,11 @@ def load_process_config(path: str | Path) -> ProcessConfig:
             margin_basis=c.get("margin_basis"),
             applies_when=c.get("applies_when"),
             disposition=c.get("disposition", "reject"),
+            active=bool(c.get("active", True)),
+            tolerance_pct=(
+                float(c["tolerance_pct"]) if c.get("tolerance_pct") is not None
+                else None
+            ),
         ))
     if not ctqs:
         raise ConfigError(f"{path}: at least one CTQ is required.")
